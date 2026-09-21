@@ -1,6 +1,0 @@
-{
-  "name": "Runtime Service Graph Orchestration Dashboard",
-  "description": "Engineering and infrastructure dashboard for runtime service graph orchestration, service dependencies, alternative fallbacks, workload scheduling, and telemetry events.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
