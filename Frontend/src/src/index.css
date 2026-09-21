@@ -1,0 +1,127 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #0b1326;
+  --color-surface-dim: #0b1326;
+  --color-surface-bright: #31394d;
+  --color-surface-container-lowest: #060e20;
+  --color-surface-container-low: #131b2e;
+  --color-surface-container: #171f33;
+  --color-surface-container-high: #222a3d;
+  --color-surface-container-highest: #2d3449;
+  --color-on-surface: #dae2fd;
+  --color-on-surface-variant: #cbc3d7;
+  --color-inverse-surface: #dae2fd;
+  --color-inverse-on-surface: #283044;
+  --color-outline: #958ea0;
+  --color-outline-variant: #494454;
+  --color-surface-tint: #d0bcff;
+  --color-primary: #d0bcff;
+  --color-on-primary: #3c0091;
+  --color-primary-container: #a078ff;
+  --color-on-primary-container: #340080;
+  --color-inverse-primary: #6d3bd7;
+  --color-secondary: #4cd7f6;
+  --color-on-secondary: #003640;
+  --color-secondary-container: #03b5d3;
+  --color-on-secondary-container: #00424e;
+  --color-tertiary: #4edea3;
+  --color-on-tertiary: #003824;
+  --color-tertiary-container: #00a572;
+  --color-on-tertiary-container: #00311f;
+  --color-error: #ffb4ab;
+  --color-on-error: #690005;
+  --color-error-container: #93000a;
+  --color-on-error-container: #ffdad6;
+  --color-primary-fixed: #e9ddff;
+  --color-primary-fixed-dim: #d0bcff;
+  --color-secondary-fixed: #acedff;
+  --color-secondary-fixed-dim: #4cd7f6;
+  --color-tertiary-fixed: #6ffbbe;
+  --color-tertiary-fixed-dim: #4edea3;
+  --color-surface-variant: #2d3449;
+
+  --font-headline-xl: 'Geist', sans-serif;
+  --font-headline-lg: 'Geist', sans-serif;
+  --font-headline-sm: 'Geist', sans-serif;
+  --font-body-md: 'Geist', sans-serif;
+  --font-body-sm: 'Geist', sans-serif;
+  --font-code-md: 'JetBrains Mono', monospace;
+  --font-code-sm: 'JetBrains Mono', monospace;
+  --font-label-caps: 'JetBrains Mono', monospace;
+
+  --spacing-gutter: 0.75rem;
+  --spacing-margin: 1rem;
+  --spacing-space-xs: 0.25rem;
+  --spacing-space-sm: 0.5rem;
+  --spacing-space-md: 0.75rem;
+  --spacing-space-lg: 1rem;
+  --spacing-space-xl: 1.5rem;
+}
+
+@layer utilities {
+  .text-headline-xl {
+    font-size: 1.75rem;
+    line-height: 2.25rem;
+    letter-spacing: -0.025em;
+  }
+  .text-headline-lg {
+    font-size: 1.375rem;
+    line-height: 1.75rem;
+    letter-spacing: -0.02em;
+  }
+  .text-headline-sm {
+    font-size: 1.125rem;
+    line-height: 1.5rem;
+    letter-spacing: -0.015em;
+  }
+  .text-body-md {
+    font-size: 0.875rem;
+    line-height: 1.375rem;
+    letter-spacing: -0.005em;
+  }
+  .text-body-sm {
+    font-size: 0.75rem;
+    line-height: 1.125rem;
+    letter-spacing: 0em;
+  }
+  .text-code-md {
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+    letter-spacing: -0.01em;
+  }
+  .text-code-sm {
+    font-size: 0.6875rem;
+    line-height: 1rem;
+    letter-spacing: 0em;
+  }
+  .text-label-caps {
+    font-size: 0.625rem;
+    line-height: 0.875rem;
+    letter-spacing: 0.08em;
+  }
+}
+
+/* Custom scrollbar styling for technical dashboard feel */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #060e20;
+}
+::-webkit-scrollbar-thumb {
+  background: #222a3d;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #494454;
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+  vertical-align: middle;
+  line-height: 1;
+  display: inline-block;
+}
+
