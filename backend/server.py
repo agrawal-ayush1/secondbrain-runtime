@@ -7,7 +7,7 @@ if backend_dir not in sys.path:
 
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
-from fastapi import FastAPI, HTTPException, Query, Path
+from fastapi import FastAPI, HTTPException, Query, Path, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -21,6 +21,7 @@ try:
     from .gemini_adapter import SimulatedGeminiAdapter, QuotaTracker
     from .resource_adapter import SimulatedResourceAdapter, ResourceAdapter
     from .config import GEMINI_MODE, DEFAULT_MODEL_QUOTAS, ModelQuotaConfig, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_CONCURRENCY
+    from .auth_manager import auth_manager
     from .dto import (
         map_resource_to_dto,
         map_graph_to_dto,
@@ -38,6 +39,7 @@ except ImportError:
     from gemini_adapter import SimulatedGeminiAdapter, QuotaTracker
     from resource_adapter import SimulatedResourceAdapter, ResourceAdapter
     from config import GEMINI_MODE, DEFAULT_MODEL_QUOTAS, ModelQuotaConfig, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_CONCURRENCY
+    from auth_manager import auth_manager
     from dto import (
         map_resource_to_dto,
         map_graph_to_dto,
@@ -386,6 +388,72 @@ class SimulationStepRequest(BaseModel):
     action: str = "run_step"  # "run_step", "rate_limit", "quota_exhausted", "live"
     resource_id: Optional[str] = None
     workflow_id: Optional[str] = None
+
+class OTPRequest(BaseModel):
+    email: str = Field(..., description="Registered user email address", json_schema_extra={"example": "sre-admin@secondbrain.ai"})
+
+class OTPVerifyRequest(BaseModel):
+    email: str = Field(..., description="Registered user email address", json_schema_extra={"example": "sre-admin@secondbrain.ai"})
+    otp: str = Field(..., description="6-digit verification code sent via SMTP", json_schema_extra={"example": "123456"})
+
+
+class UserRegisterRequest(BaseModel):
+    email: str = Field(..., description="Email address to register", json_schema_extra={"example": "new-operator@secondbrain.ai"})
+    name: str = Field("Operator", description="Human readable name", json_schema_extra={"example": "New Cluster Operator"})
+    role: str = Field("operator", description="User role", json_schema_extra={"example": "operator"})
+
+
+# ==================================================
+# AUTHENTICATION API (/api/v1/auth)
+# ==================================================
+
+@app.post("/api/v1/auth/request-otp", tags=["Authentication API"], summary="Request SMTP Verification Code")
+def request_otp_v1(req: OTPRequest):
+    """Requests a 6-digit OTP code sent strictly via SMTP to a registered user email address."""
+    return auth_manager.request_otp(req.email)
+
+
+@app.post("/api/v1/auth/verify-otp", tags=["Authentication API"], summary="Verify OTP & Issue Session Token")
+def verify_otp_v1(req: OTPVerifyRequest):
+    """Verifies input OTP code against stored hash and issues JWT authentication session token."""
+    return auth_manager.verify_otp(req.email, req.otp)
+
+
+@app.get("/api/v1/auth/me", tags=["Authentication API"], summary="Current User Session Status")
+def get_auth_me_v1(authorization: Optional[str] = Header(None)):
+    """Validates active JWT session token and returns current user state."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authentication token missing")
+    token = authorization.split("Bearer ", 1)[1]
+    payload = auth_manager.verify_session_token(token)
+    return {"authenticated": True, "user": payload}
+
+
+@app.post("/api/v1/auth/logout", tags=["Authentication API"], summary="Logout User Session")
+def logout_v1():
+    """Logs out user session."""
+    return {"status": "success", "message": "Logged out successfully."}
+
+
+@app.get("/api/v1/admin/users", tags=["Authentication API"], summary="List Registered Users")
+def list_registered_users_admin(authorization: Optional[str] = Header(None)):
+    """Protected admin endpoint listing all registered user accounts."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Admin authentication token required")
+    token = authorization.split("Bearer ", 1)[1]
+    auth_manager.verify_session_token(token)
+    return {"users": auth_manager.user_registry.list_users()}
+
+
+@app.post("/api/v1/admin/users", tags=["Authentication API"], summary="Register New User Account")
+def register_user_admin(req: UserRegisterRequest, authorization: Optional[str] = Header(None)):
+    """Protected admin endpoint registering a new user account eligible for OTP authentication."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Admin authentication token required")
+    token = authorization.split("Bearer ", 1)[1]
+    auth_manager.verify_session_token(token)
+    user_info = auth_manager.register_user(email=req.email, name=req.name, role=req.role)
+    return {"status": "success", "message": f"User {req.email} registered successfully.", "user": user_info}
 
 
 # ==================================================

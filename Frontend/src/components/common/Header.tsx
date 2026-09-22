@@ -14,10 +14,14 @@ import {
   Globe,
   CheckCircle2,
   WifiOff,
+  LogIn,
+  LogOut,
+  UserCheck,
 } from 'lucide-react';
 import { alternativesService } from '../../services/alternativesService';
 import { eventsService } from '../../services/eventsService';
 import { apiClient } from '../../services/apiClient';
+import { useAuth } from '../../context/AuthContext';
 
 const ROUTE_TITLES: Record<string, { title: string; category: string }> = {
   '/': { title: 'Operational Overview', category: 'RUNTIME CONTROL' },
@@ -32,6 +36,7 @@ const ROUTE_TITLES: Record<string, { title: string; category: string }> = {
 export const Header: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, isAuthenticated, openAuthModal, logout } = useAuth();
   const [isProbing, setIsProbing] = useState(false);
   const [probeResult, setProbeResult] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -197,19 +202,38 @@ export const Header: React.FC = () => {
           <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-secondary shadow-[0_0_6px_rgba(76,215,246,0.9)]" />
         </button>
 
-        {/* Operator User Badge */}
-        <div className="flex items-center gap-2.5 pl-2 border-l border-outline-variant/30">
-          <div className="h-8 w-8 rounded-lg bg-primary/20 border border-primary/40 flex items-center justify-center font-mono text-xs font-semibold text-primary">
-            OP
-          </div>
-          <div className="hidden xl:flex flex-col text-left">
-            <span className="font-mono text-xs font-medium text-on-surface leading-tight">
-              sre-admin
-            </span>
-            <span className="text-label-caps text-outline font-mono leading-tight">
-              PROD-CLUSTER
-            </span>
-          </div>
+        {/* Operator User Auth Badge */}
+        <div className="flex items-center gap-2 pl-2 border-l border-outline-variant/30">
+          {isAuthenticated && user ? (
+            <div className="flex items-center gap-2.5">
+              <div className="h-8 w-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center font-mono text-xs font-semibold text-emerald-400">
+                <UserCheck className="h-4 w-4" />
+              </div>
+              <div className="hidden xl:flex flex-col text-left">
+                <span className="font-mono text-xs font-medium text-on-surface leading-tight truncate max-w-[130px]">
+                  {user.email.split('@')[0]}
+                </span>
+                <span className="text-label-caps text-emerald-400 font-mono leading-tight">
+                  AUTHENTICATED
+                </span>
+              </div>
+              <button
+                onClick={() => logout()}
+                title="Sign Out Session"
+                className="p-1.5 rounded-lg text-outline hover:text-red-400 hover:bg-surface-container transition-colors"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={openAuthModal}
+              className="flex items-center gap-2 px-3 py-1.5 bg-primary/15 border border-primary/40 hover:bg-primary/25 text-xs font-mono font-semibold text-primary rounded-lg transition-all active:scale-95"
+            >
+              <LogIn className="h-3.5 w-3.5" />
+              <span>Operator Sign In</span>
+            </button>
+          )}
         </div>
       </div>
     </header>
