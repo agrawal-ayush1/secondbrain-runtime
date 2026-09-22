@@ -193,10 +193,11 @@ class Scheduler:
 
         # 1. Classify Failure and update resource health state
         cooldown_mins = cooldown_val / 60.0 if cooldown_val >= 10.0 else cooldown_val
-        if ftype in (FailureType.RATE_LIMITED, FailureType.QUOTA_EXHAUSTED, FailureType.SERVICE_UNAVAILABLE):
+        ftype_val = ftype.value if hasattr(ftype, "value") else str(ftype)
+        if ftype_val in (FailureType.RATE_LIMITED.value, FailureType.QUOTA_EXHAUSTED.value, FailureType.SERVICE_UNAVAILABLE.value):
             self.resource_manager.mark_constrained(res_id, cooldown_duration=cooldown_mins, current_time=self.current_time_num)
             self.log_event(f"{res_id} -> CONSTRAINED")
-        elif ftype == FailureType.TIMEOUT:
+        elif ftype_val == FailureType.TIMEOUT.value:
             if wf and wf.retry_count < 1:
                 wf.retry_count += 1
                 retry_res = self.resource_manager.reserve(
@@ -212,13 +213,13 @@ class Scheduler:
                     return retry_res
             self.resource_manager.mark_constrained(res_id, cooldown_duration=cooldown_mins, current_time=self.current_time_num)
             self.log_event(f"{res_id} -> CONSTRAINED")
-        elif ftype == FailureType.EXECUTION_FAILED:
+        elif ftype_val == FailureType.EXECUTION_FAILED.value:
             pass
-        elif ftype == FailureType.RESERVATION_EXPIRED:
+        elif ftype_val == FailureType.RESERVATION_EXPIRED.value:
             pass
 
         # 2. Dynamic rerouting using ServiceGraph alternatives
-        if ftype != FailureType.RESERVATION_EXPIRED and self.service_graph:
+        if ftype_val != FailureType.RESERVATION_EXPIRED.value and self.service_graph:
             alternatives = self.service_graph.get_alternatives(res_id)
             for alt_id in alternatives:
                 if self.resource_manager.can_reserve(alt_id, req_dims, current_time=self.current_time_num):

@@ -1,7 +1,7 @@
 import os
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional
-from models import FailureEvent, FailureType, ReservationStatus
+from .models import FailureEvent, FailureType, ReservationStatus
 from config import ModelQuotaConfig, DEFAULT_MODEL_QUOTAS, GEMINI_MODE
 from resource_manager import ResourceManager
 

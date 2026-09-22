@@ -46,6 +46,7 @@ export interface Resource {
   crashDetails?: string;
   capacity?: {
     reserved?: number;
+    used?: number;
     available?: number;
     total?: number;
     unit?: string;

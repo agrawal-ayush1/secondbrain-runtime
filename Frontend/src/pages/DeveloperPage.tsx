@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Code,
   Terminal,
@@ -18,12 +18,19 @@ import {
   Play
 } from 'lucide-react';
 import { simulationService } from '../services/simulationService';
+import { apiClient } from '../services/apiClient';
 
 export const DeveloperPage: React.FC = () => {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'rest' | 'python'>('rest');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [, setRefreshTick] = useState(0);
+
+  useEffect(() => {
+    const unsub = apiClient.subscribeRefresh(() => setRefreshTick((t) => t + 1));
+    return () => unsub();
+  }, []);
 
   const baseUrl = 'http://localhost:8000/api/v1';
 
@@ -126,7 +133,7 @@ print("Capacity Reserved:", reservation["status"])
       </div>
 
       {/* Endpoint Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="p-4 rounded-lg bg-surface-container border border-outline-variant/30 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-mono text-outline uppercase font-semibold">Base Endpoint</span>
@@ -164,6 +171,52 @@ print("Capacity Reserved:", reservation["status"])
           <p className="text-xs text-on-surface-variant font-mono">
             Automatic rerouting from Flash to Flash Lite on rate limit.
           </p>
+        </div>
+
+        {/* Offline / Resilience Telemetry Card */}
+        <div className="p-4 rounded-lg bg-surface-container border border-amber-500/30 space-y-2 relative overflow-hidden">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono text-amber-400 uppercase font-semibold flex items-center gap-1.5">
+              <Cpu className="h-3.5 w-3.5" />
+              OFFLINE / RESILIENCE
+            </span>
+            <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold uppercase ${
+              apiClient.getMode() === 'OFFLINE RUNTIME' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse' : 'bg-emerald-500/20 text-emerald-300'
+            }`}>
+              {apiClient.getMode() === 'OFFLINE RUNTIME' ? 'DEGRADED (LAN FALLBACK)' : 'ONLINE'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-xs font-mono pt-1">
+            <div>
+              <span className="text-outline text-[10px] block">Primary LLM:</span>
+              <strong className="text-primary font-semibold">Gemini 2.5 Flash</strong>
+            </div>
+            <div>
+              <span className="text-outline text-[10px] block">Fallback LLM:</span>
+              <strong className="text-amber-300 font-semibold">Ollama Local (LAN)</strong>
+            </div>
+            <div>
+              <span className="text-outline text-[10px] block">Fallback Endpoint:</span>
+              <strong className="text-on-surface text-[11px] truncate block" title="Configured OLLAMA_BASE_URL">
+                OLLAMA_BASE_URL (LAN)
+              </strong>
+            </div>
+            <div>
+              <span className="text-outline text-[10px] block">Fallback Model:</span>
+              <strong className="text-tertiary">llama3.2</strong>
+            </div>
+            <div>
+              <span className="text-outline text-[10px] block">Ollama Health:</span>
+              <strong className="text-emerald-400 font-bold">AVAILABLE</strong>
+            </div>
+            <div>
+              <span className="text-outline text-[10px] block">Connectivity:</span>
+              <strong className={apiClient.getMode() === 'OFFLINE RUNTIME' ? 'text-amber-300' : 'text-emerald-400'}>
+                {apiClient.getMode() === 'OFFLINE RUNTIME' ? 'DEGRADED' : 'ONLINE'}
+              </strong>
+            </div>
+          </div>
         </div>
       </div>
 

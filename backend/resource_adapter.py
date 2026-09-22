@@ -13,10 +13,12 @@ import os
 try:
     from .models import ResourceHealthState, FailureType, FailureEvent
     from .gemini_adapter import GeminiAdapter, SimulatedGeminiAdapter, RealGeminiAdapter, ExecutionResult, QuotaTracker
+    from .ollama_adapter import OllamaAdapter
     from .resource_manager import ResourceManager
 except ImportError:
     from models import ResourceHealthState, FailureType, FailureEvent
     from gemini_adapter import GeminiAdapter, SimulatedGeminiAdapter, RealGeminiAdapter, ExecutionResult, QuotaTracker
+    from ollama_adapter import OllamaAdapter
     from resource_manager import ResourceManager
 
 
@@ -59,8 +61,11 @@ class SimulatedResourceAdapter(ResourceAdapter):
 
     def __init__(self, quota_tracker: Optional[QuotaTracker] = None):
         self.gemini_adapter = SimulatedGeminiAdapter(quota_tracker=quota_tracker)
+        self.ollama_adapter = OllamaAdapter()
 
     def health(self, resource_id: str, resource_manager: Optional[ResourceManager] = None) -> ResourceHealthState:
+        if resource_id == "ollama-local":
+            return self.ollama_adapter.health(resource_id, resource_manager)
         if resource_manager:
             res = resource_manager.get_resource(resource_id)
             if res:
@@ -68,6 +73,8 @@ class SimulatedResourceAdapter(ResourceAdapter):
         return ResourceHealthState.AVAILABLE
 
     def capacity(self, resource_id: str, resource_manager: Optional[ResourceManager] = None) -> Dict[str, float]:
+        if resource_id == "ollama-local":
+            return self.ollama_adapter.capacity(resource_id, resource_manager)
         if resource_manager:
             res = resource_manager.get_resource(resource_id)
             if res:
@@ -85,6 +92,18 @@ class SimulatedResourceAdapter(ResourceAdapter):
         reservation_id: Optional[str] = None,
         resource_manager: Optional[ResourceManager] = None
     ) -> ExecutionResult:
+        if resource_id == "ollama-local":
+            return self.ollama_adapter.execute(
+                workflow_id=workflow_id,
+                resource_id=resource_id,
+                input_data=input_data,
+                estimated_tokens=estimated_tokens,
+                timestamp=timestamp,
+                current_time_num=current_time_num,
+                reservation_id=reservation_id,
+                resource_manager=resource_manager
+            )
+
         return self.gemini_adapter.execute(
             workflow_id=workflow_id,
             resource_id=resource_id,
@@ -102,7 +121,8 @@ class SimulatedResourceAdapter(ResourceAdapter):
         return False
 
 
-# Register Gemini adapters with ResourceAdapter
+# Register adapters with ResourceAdapter
 ResourceAdapter.register(GeminiAdapter)
 ResourceAdapter.register(SimulatedGeminiAdapter)
 ResourceAdapter.register(RealGeminiAdapter)
+ResourceAdapter.register(OllamaAdapter)

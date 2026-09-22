@@ -152,6 +152,21 @@ export const EventsPage: React.FC = () => {
                       <StatusBadge status={evt.severity} size="sm" />
                       <span className="font-semibold text-on-surface">{evt.type}</span>
                       <span className="text-secondary">[{evt.resource}]</span>
+
+                      {/* Source Indicator Tag */}
+                      {(evt.description?.includes('[OFFLINE]') || evt.type?.includes('OFFLINE') || (evt as any).source === 'OFFLINE RUNTIME') ? (
+                        <span className="text-label-caps px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
+                          OFFLINE RUNTIME
+                        </span>
+                      ) : (evt.description?.includes('SYNC') || evt.type?.includes('SYNC')) ? (
+                        <span className="text-label-caps px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">
+                          SYNC
+                        </span>
+                      ) : (
+                        <span className="text-label-caps px-2 py-0.5 rounded bg-surface-container-highest text-outline border border-outline-variant/30">
+                          ONLINE
+                        </span>
+                      )}
                     </div>
                     <span className="text-label-caps text-outline">{evt.relativeTime}</span>
                   </div>

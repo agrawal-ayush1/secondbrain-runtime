@@ -27,6 +27,8 @@ import { eventsService } from '../services/eventsService';
 import { Resource, ResourceCategory, ResourceStatus } from '../types';
 import { StatusBadge } from '../components/common/StatusBadge';
 
+import { SimulationControlBar } from '../components/common/SimulationControlBar';
+
 const CATEGORIES: { id: ResourceCategory; label: string }[] = [
   { id: 'all', label: 'All Resources' },
   { id: 'ingress', label: 'Ingress' },
@@ -50,15 +52,28 @@ export const ResourcesPage: React.FC = () => {
   );
   const [isRestarting, setIsRestarting] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function loadData() {
+  async function loadData() {
+    try {
       const all = await resourcesService.getAll();
       setResources(all);
+    } catch (err) {
+      console.error('Error fetching live resources state:', err);
     }
+  }
+
+  useEffect(() => {
     loadData();
 
+    // Subscribe to refresh bus (POST actions trigger instant refresh)
     const unsub = resourcesService.subscribe(loadData);
-    return () => unsub();
+
+    // Auto-refresh polling (1.5s interval) to capture live simulation progression
+    const interval = setInterval(loadData, 1500);
+
+    return () => {
+      unsub();
+      clearInterval(interval);
+    };
   }, []);
 
   // Filter logic
@@ -88,6 +103,7 @@ export const ResourcesPage: React.FC = () => {
     e.stopPropagation();
     setIsRestarting(id);
     await resourcesService.restartResource(id);
+    await loadData();
     await eventsService.addEvent({
       severity: 'info',
       type: 'Resource Started',
@@ -152,6 +168,9 @@ export const ResourcesPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Global Simulation Control Bar */}
+      <SimulationControlBar onWorkflowCreated={loadData} />
+
       {/* Category Pills */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 font-mono text-xs">
         {CATEGORIES.map((cat) => (
@@ -169,22 +188,25 @@ export const ResourcesPage: React.FC = () => {
         ))}
       </div>
 
-      {/* Resource Cards Grid / Table */}
+      {/* Resource Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredResources.map((res) => {
           const isSelected = selectedResourceId === res.id;
+          const isConstrained = res.status === 'degraded' || res.status === 'offline';
 
           return (
             <div
               key={res.id}
               onClick={() => setSelectedResourceId(res.id)}
               className={`p-4 rounded-xl bg-surface-container-low border transition-all cursor-pointer space-y-3 font-mono text-xs flex flex-col justify-between ${
-                isSelected
+                isConstrained
+                  ? 'border-error/50 bg-error/10 shadow-[0_0_12px_rgba(239,68,68,0.2)]'
+                  : isSelected
                   ? 'border-primary shadow-[0_0_16px_rgba(208,188,255,0.25)] bg-surface-container'
                   : 'border-outline-variant/30 hover:border-outline hover:bg-surface-container/60'
               }`}
             >
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <span className="text-label-caps text-outline uppercase">{res.type}</span>
@@ -198,6 +220,22 @@ export const ResourcesPage: React.FC = () => {
                   <div className="text-outline truncate">{res.runtime}</div>
                 </div>
 
+                {/* Capacity & Reservation Breakdown */}
+                {res.capacity && (
+                  <div className="p-2 rounded bg-surface-container/60 border border-outline-variant/30 space-y-1 text-[11px]">
+                    <div className="flex items-center justify-between text-outline">
+                      <span>Capacity ({res.capacity.unit || 'UNITS'})</span>
+                      <span className="font-semibold text-on-surface">
+                        {res.capacity.reserved || 0} reserved / {res.capacity.total || 0}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="text-tertiary">Avail: {res.capacity.available ?? res.capacity.total}</span>
+                      <span className="text-outline">Used: {res.capacity.used || 0}</span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Metrics row */}
                 <div className="grid grid-cols-3 gap-2 pt-1 border-t border-outline-variant/20 text-center">
                   <div>
@@ -206,11 +244,13 @@ export const ResourcesPage: React.FC = () => {
                   </div>
                   <div>
                     <span className="text-label-caps text-outline block">CPU</span>
-                    <span className="text-on-surface font-semibold">{res.metrics?.cpu || 32}%</span>
+                    <span className="text-on-surface font-semibold">{res.metrics?.cpu ?? 32}%</span>
                   </div>
                   <div>
-                    <span className="text-label-caps text-outline block">REPLICAS</span>
-                    <span className="text-on-surface font-semibold">{res.metrics?.replicas || '1 / 1'}</span>
+                    <span className="text-label-caps text-outline block">ERROR RATE</span>
+                    <span className={`font-semibold ${res.metrics?.errorRate !== '0.00%' ? 'text-error' : 'text-on-surface'}`}>
+                      {res.metrics?.errorRate || '0.00%'}
+                    </span>
                   </div>
                 </div>
               </div>

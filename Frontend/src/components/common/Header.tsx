@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -13,9 +13,11 @@ import {
   ShieldAlert,
   Globe,
   CheckCircle2,
+  WifiOff,
 } from 'lucide-react';
 import { alternativesService } from '../../services/alternativesService';
 import { eventsService } from '../../services/eventsService';
+import { apiClient } from '../../services/apiClient';
 
 const ROUTE_TITLES: Record<string, { title: string; category: string }> = {
   '/': { title: 'Operational Overview', category: 'RUNTIME CONTROL' },
@@ -33,6 +35,12 @@ export const Header: React.FC = () => {
   const [isProbing, setIsProbing] = useState(false);
   const [probeResult, setProbeResult] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [, setRefreshTick] = useState(0);
+
+  useEffect(() => {
+    const unsub = apiClient.subscribeRefresh(() => setRefreshTick((t) => t + 1));
+    return () => unsub();
+  }, []);
 
   const currentMeta = ROUTE_TITLES[location.pathname] || {
     title: 'Service Graph Orchestrator',
@@ -133,6 +141,42 @@ export const Header: React.FC = () => {
               <RefreshCw className={`h-3.5 w-3.5 text-primary ${isProbing ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">Probe Standby SLA</span>
             </button>
+          )}
+        </div>
+
+        {/* Runtime Connectivity Status Badge */}
+        <div className="flex items-center gap-2">
+          {apiClient.getMode() === 'ONLINE' && (
+            <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-xs font-mono text-emerald-400">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="font-bold">ONLINE</span>
+            </div>
+          )}
+
+          {apiClient.getMode() === 'OFFLINE RUNTIME' && (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 px-3 py-1 bg-amber-500/15 border border-amber-500/40 rounded-lg text-xs font-mono text-amber-300">
+              <div className="flex items-center gap-1.5 font-bold">
+                <WifiOff className="h-3.5 w-3.5 text-amber-400 animate-pulse" />
+                <span>OFFLINE RUNTIME</span>
+              </div>
+              <span className="text-[10px] text-amber-200/80 border-t sm:border-t-0 sm:border-l sm:border-amber-500/30 sm:pl-2">
+                Local orchestration active | Queue: {apiClient.getPendingOpsCount()} ops
+              </span>
+            </div>
+          )}
+
+          {apiClient.getMode() === 'SYNCING' && (
+            <div className="flex items-center gap-1.5 px-3 py-1 bg-blue-500/15 border border-blue-500/40 rounded-lg text-xs font-mono text-blue-300">
+              <RefreshCw className="h-3.5 w-3.5 text-blue-400 animate-spin" />
+              <span className="font-bold">SYNCING</span>
+            </div>
+          )}
+
+          {apiClient.getMode() === 'SYNCED' && (
+            <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/20 border border-emerald-500/40 rounded-lg text-xs font-mono text-emerald-300">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+              <span className="font-bold">SYNCED</span>
+            </div>
           )}
         </div>
 

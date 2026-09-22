@@ -8,6 +8,8 @@ import { Play, AlertTriangle, ShieldAlert, RotateCcw, PlusCircle, Layers } from 
 import { simulationService } from '../../services/simulationService';
 import { apiClient } from '../../services/apiClient';
 
+export const LIVE_SIMULATION_INTERVAL_MS = 3000;
+
 export const SimulationControlBar: React.FC<{ onWorkflowCreated?: () => void }> = ({ onWorkflowCreated }) => {
   const [isAdvancing, setIsAdvancing] = useState(false);
   const [isRateLimiting, setIsRateLimiting] = useState(false);
@@ -22,23 +24,31 @@ export const SimulationControlBar: React.FC<{ onWorkflowCreated?: () => void }> 
   const isMock = apiClient.isUsingMock();
 
   const [isLiveRunning, setIsLiveRunning] = useState(false);
+  const [simSpeed, setSimSpeed] = useState<number>(LIVE_SIMULATION_INTERVAL_MS);
+  const isExecutingStepRef = React.useRef(false);
 
   React.useEffect(() => {
-    let timer: any = null;
+    let timer: NodeJS.Timeout | null = null;
+
     if (isLiveRunning) {
       timer = setInterval(async () => {
+        if (isExecutingStepRef.current) return;
+        isExecutingStepRef.current = true;
         try {
           await simulationService.stepLive();
           if (onWorkflowCreated) onWorkflowCreated();
         } catch (e) {
           console.error('Error during live tick:', e);
+        } finally {
+          isExecutingStepRef.current = false;
         }
-      }, 3000);
+      }, simSpeed);
     }
+
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, [isLiveRunning, onWorkflowCreated]);
+  }, [isLiveRunning, simSpeed, onWorkflowCreated]);
 
   const handleStep = async () => {
     setIsAdvancing(true);
@@ -133,16 +143,45 @@ export const SimulationControlBar: React.FC<{ onWorkflowCreated?: () => void }> 
           <span>Submit Workflow</span>
         </button>
 
+        {/* Live Sim Toggle & Speed Selector Group */}
+        <div className="flex items-center gap-1 bg-surface-container-high border border-outline-variant/40 rounded-lg p-0.5">
+          <button
+            onClick={() => setIsLiveRunning(!isLiveRunning)}
+            className={`px-3 py-1.5 rounded-md font-semibold flex items-center gap-1.5 transition-colors ${
+              isLiveRunning
+                ? 'bg-tertiary/20 text-tertiary border border-tertiary/40 shadow-[0_0_10px_rgba(78,222,163,0.3)] animate-pulse'
+                : 'hover:bg-surface-bright text-on-surface'
+            }`}
+          >
+            <Play className={`h-3.5 w-3.5 ${isLiveRunning ? 'text-tertiary animate-spin' : 'text-primary'}`} />
+            <span>{isLiveRunning ? 'PAUSE LIVE SIM' : 'START LIVE SIM'}</span>
+          </button>
+
+          <select
+            value={simSpeed}
+            onChange={(e) => setSimSpeed(Number(e.target.value))}
+            title="Live simulation step speed interval"
+            className="bg-transparent border-l border-outline-variant/30 pl-2 pr-1.5 py-1 text-xs font-mono text-outline focus:outline-none cursor-pointer hover:text-on-surface"
+          >
+            <option value={5000} className="bg-surface-container text-on-surface">5s (Slow)</option>
+            <option value={3000} className="bg-surface-container text-on-surface">3s (Normal)</option>
+            <option value={1500} className="bg-surface-container text-on-surface">1.5s (Fast)</option>
+          </select>
+        </div>
+
+        {/* Offline Demo Control Toggle */}
         <button
-          onClick={() => setIsLiveRunning(!isLiveRunning)}
-          className={`px-3 py-1.5 rounded-lg border font-semibold flex items-center gap-1.5 transition-colors ${
-            isLiveRunning
-              ? 'bg-tertiary/20 text-tertiary border-tertiary/40 shadow-[0_0_10px_rgba(78,222,163,0.3)] animate-pulse'
-              : 'bg-surface-container-high hover:bg-surface-bright text-on-surface border-outline-variant/40'
+          onClick={() => apiClient.setSimulatedOffline(!apiClient.isSimulatedOfflineMode())}
+          className={`px-3 py-1.5 rounded-lg border font-semibold flex items-center gap-1.5 transition-all ${
+            apiClient.isSimulatedOfflineMode()
+              ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-[0_0_12px_rgba(245,158,11,0.3)] animate-pulse'
+              : 'bg-surface-container-high hover:bg-amber-500/10 hover:border-amber-500/40 text-on-surface border-outline-variant/40'
           }`}
+          title="Toggle simulated offline mode to test offline orchestration, local event journal, and auto-sync"
         >
-          <Play className={`h-3.5 w-3.5 ${isLiveRunning ? 'text-tertiary animate-spin' : 'text-primary'}`} />
-          <span>{isLiveRunning ? 'PAUSE LIVE SIM' : 'START LIVE SIM'}</span>
+          <span className="font-bold">
+            {apiClient.isSimulatedOfflineMode() ? 'SIMULATED OFFLINE (ACTIVE)' : 'SIMULATE OFFLINE'}
+          </span>
         </button>
 
         <button

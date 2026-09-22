@@ -11,11 +11,13 @@ try:
     from .service_graph import ServiceGraph
     from .resource_manager import ResourceManager
     from .prediction_engine import Prediction
+    from .config import OLLAMA_BASE_URL, OLLAMA_MODEL
 except ImportError:
     from models import Resource, Workflow, FailureEvent, ResourceHealthState
     from service_graph import ServiceGraph
     from resource_manager import ResourceManager
     from prediction_engine import Prediction
+    from config import OLLAMA_BASE_URL, OLLAMA_MODEL
 
 
 RESOURCE_BASELINES = {
@@ -24,6 +26,7 @@ RESOURCE_BASELINES = {
     "gemini-2.5-flash-lite": {"cpu": 20, "p99": 110.0, "conns": 8, "base_qps": 1},
     "gemini-flash": {"cpu": 30, "p99": 220.0, "conns": 10, "base_qps": 1},
     "gemini-flash-lite": {"cpu": 18, "p99": 100.0, "conns": 6, "base_qps": 1},
+    "ollama-local": {"cpu": 25, "p99": 140.0, "conns": 5, "base_qps": 1},
     "postgres-db": {"cpu": 10, "p99": 4.5, "conns": 3, "base_qps": 5},
     "pdf-generator": {"cpu": 45, "p99": 850.0, "conns": 2, "base_qps": 1},
     "docker-worker": {"cpu": 50, "p99": 1200.0, "conns": 1, "base_qps": 1},
@@ -92,6 +95,9 @@ def map_resource_to_dto(resource: Resource, quota_tracker: Optional[Any] = None)
 
     cat = "ingress" if ("gateway" in resource.id.lower() or "search" in resource.id.lower()) else ("db" if resource.type == "database" else ("compute" if resource.type == "llm" else "service"))
 
+    endpoint_val = OLLAMA_BASE_URL if resource.id == "ollama-local" else f"http://localhost:8000/api/v1/resources/{resource.id}"
+    provider_val = "Ollama LAN" if resource.id == "ollama-local" else ("Google Gemini" if "gemini" in resource.id else "Internal")
+
     return {
         "id": resource.id,
         "name": resource.name,
@@ -99,7 +105,9 @@ def map_resource_to_dto(resource: Resource, quota_tracker: Optional[Any] = None)
         "category": cat,
         "status": telemetry["status"],
         "runtime": f"SecondBrain Controller ({resource.type})",
-        "endpoint": f"http://localhost:8000/api/v1/resources/{resource.id}",
+        "endpoint": endpoint_val,
+        "provider": provider_val,
+        "model": OLLAMA_MODEL if resource.id == "ollama-local" else ("gemini-2.5-flash" if "flash" in resource.id else None),
         "namespace": "default",
         "protocols": ["HTTP/2", "gRPC"],
         "dependencies": [],
@@ -220,8 +228,9 @@ def map_workflow_to_dto(
         for req in scheduler.waiting_requests:
             if req.workflow.id == workflow.id:
                 is_queued = True
-                effective_priority = req.effective_priority
-                waiting_time = req.wait_minutes
+                aging = getattr(scheduler, "aging_factor", 2.0)
+                effective_priority = getattr(req, "effective_priority", req.workflow.get_effective_priority(aging))
+                waiting_time = getattr(req, "wait_minutes", getattr(req.workflow, "waiting_time", 0.0))
                 break
 
     predictions_dto = []

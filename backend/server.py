@@ -20,7 +20,7 @@ try:
     from .prediction_engine import PredictionEngine
     from .gemini_adapter import SimulatedGeminiAdapter, QuotaTracker
     from .resource_adapter import SimulatedResourceAdapter, ResourceAdapter
-    from .config import GEMINI_MODE, DEFAULT_MODEL_QUOTAS, ModelQuotaConfig
+    from .config import GEMINI_MODE, DEFAULT_MODEL_QUOTAS, ModelQuotaConfig, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_CONCURRENCY
     from .dto import (
         map_resource_to_dto,
         map_graph_to_dto,
@@ -37,7 +37,7 @@ except ImportError:
     from prediction_engine import PredictionEngine
     from gemini_adapter import SimulatedGeminiAdapter, QuotaTracker
     from resource_adapter import SimulatedResourceAdapter, ResourceAdapter
-    from config import GEMINI_MODE, DEFAULT_MODEL_QUOTAS, ModelQuotaConfig
+    from config import GEMINI_MODE, DEFAULT_MODEL_QUOTAS, ModelQuotaConfig, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_CONCURRENCY
     from dto import (
         map_resource_to_dto,
         map_graph_to_dto,
@@ -64,6 +64,7 @@ class RuntimeController:
         self.sim_time_str: str = "10:00"
         self._event_counter: int = 0
         self.sim_step_count: int = 0
+        self.processed_op_ids: set = set()
         self.reset_state()
 
     def log_event(self, event_msg: str, resource_id: str = "system") -> Dict[str, Any]:
@@ -96,12 +97,13 @@ class RuntimeController:
         self._event_counter = 0
         self.sim_step_count = 0
         self.sim_time_num = 600.0
-        self.sim_time_str = "10:00"
+        self.processed_op_ids.clear()
 
         # 1. Register Default Resources
         self.rm.add_resource(Resource(id="search", name="Search Service", type="service", capacity={"queries": 10.0}))
         self.rm.add_resource(Resource(id="gemini-2.5-flash", name="Gemini 2.5 Flash", type="llm", capacity={"rpm": 4.0, "tpm": 250000.0, "rpd": 20.0}))
         self.rm.add_resource(Resource(id="gemini-2.5-flash-lite", name="Gemini 2.5 Flash Lite", type="llm", capacity={"rpm": 10.0, "tpm": 250000.0, "rpd": 20.0}))
+        self.rm.add_resource(Resource(id="ollama-local", name="Ollama Local (LAN)", type="llm", capacity={"rpm": 10.0, "concurrent_jobs": OLLAMA_CONCURRENCY}))
         self.rm.add_resource(Resource(id="postgres-db", name="PostgreSQL Database", type="database", capacity={"connections": 3.0}))
         self.rm.add_resource(Resource(id="docker-worker", name="Docker Worker", type="worker", capacity={"concurrent_jobs": 1.0}))
         self.rm.add_resource(Resource(id="pdf-generator", name="PDF Generator Service", type="service", capacity={"concurrent_jobs": 2.0}))
@@ -110,6 +112,7 @@ class RuntimeController:
         self.sg.add_resource("search", attributes={"name": "Search Service"})
         self.sg.add_resource("gemini-2.5-flash", attributes={"name": "Gemini 2.5 Flash"})
         self.sg.add_resource("gemini-2.5-flash-lite", attributes={"name": "Gemini 2.5 Flash Lite"})
+        self.sg.add_resource("ollama-local", attributes={"name": "Ollama Local (LAN)"})
         self.sg.add_resource("postgres-db", attributes={"name": "PostgreSQL Database"})
         self.sg.add_resource("pdf-generator", attributes={"name": "PDF Generator Service"})
 
@@ -117,6 +120,8 @@ class RuntimeController:
         self.sg.add_dependency("gemini-2.5-flash", "postgres-db", probability=1.0)
         self.sg.add_dependency("postgres-db", "pdf-generator", probability=1.0)
         self.sg.add_dependency("gemini-2.5-flash-lite", "postgres-db", probability=1.0)
+        self.sg.add_dependency("ollama-local", "postgres-db", probability=1.0)
+        self.sg.add_alternative("gemini-2.5-flash", "ollama-local")
         self.sg.add_alternative("gemini-2.5-flash", "gemini-2.5-flash-lite")
 
         # 3. Create Default Workflows
@@ -139,6 +144,111 @@ class RuntimeController:
         self.scheduler.request_resource(w2, "search", {"queries": 1.0}, allow_fallback=False, timestamp="10:00")
 
         self.log_event("Runtime Controller initialized with default resources, ServiceGraph, and workflows.")
+
+    def process_sync_operation(self, op: Any) -> bool:
+        if op.operationId in self.processed_op_ids:
+            return True  # Idempotently accepted
+
+        self.processed_op_ids.add(op.operationId)
+        p = op.payload or {}
+        op_type = op.type.upper()
+
+        if op_type in ("CREATE_WORKFLOW", "SUBMIT_WORKFLOW"):
+            wf_id = p.get("id") or p.get("workflow_id") or f"wf-sync-{op.operationId}"
+            wf_name = p.get("name", "Custom Workflow")
+            priority = float(p.get("priority", 5.0))
+            task_seq = p.get("task_sequence") or ["search", "gemini-2.5-flash", "postgres-db"]
+            first_target = task_seq[0] if task_seq else "search"
+
+            wf = Workflow(
+                id=wf_id,
+                name=wf_name,
+                priority=priority,
+                current_task=first_target,
+                metadata={"task_sequence": task_seq}
+            )
+            self.scheduler.request_resource(wf, first_target, {"queries": 1.0} if first_target == "search" else {"rpm": 1.0}, allow_fallback=True)
+            self.log_event(f"Reconciled offline workflow: {wf.id} ({wf.name})", resource_id=first_target)
+
+        elif op_type in ("RESERVE_RESOURCE", "CREATE_RESERVATION"):
+            wf_id = p.get("workflow_id", "W1")
+            res_id = p.get("resource_id", "gemini-2.5-flash")
+            dims = p.get("dimensions", {"rpm": 1.0})
+            is_soft = p.get("soft", False)
+            res_key = f"res-sync-{op.operationId}"
+            if is_soft:
+                self.rm.soft_reserve(res_key, wf_id, res_id, dims, current_time=self.sim_time_num)
+            else:
+                self.rm.reserve(res_key, wf_id, res_id, dims, current_time=self.sim_time_num)
+            self.log_event(f"Reconciled offline reservation on {res_id} for {wf_id}", resource_id=res_id)
+
+        elif op_type in ("RELEASE_RESOURCE", "RELEASE_RESERVATION"):
+            r_id = p.get("reservation_id")
+            if r_id:
+                self.rm.release(r_id)
+                self.log_event(f"Reconciled offline release of reservation {r_id}")
+
+        elif op_type in ("REROUTE_WORKFLOW", "FALLBACK_SELECTED"):
+            wf_id = p.get("workflow_id")
+            target_res = p.get("resource_id") or p.get("target_resource_id")
+            if wf_id and target_res:
+                wf = self.scheduler.workflows.get(wf_id)
+                if wf:
+                    wf.current_task = target_res
+                    self.scheduler.request_resource(wf, target_res, {"rpm": 1.0}, allow_fallback=True)
+                self.log_event(f"Reconciled offline reroute: {wf_id} -> {target_res}", resource_id=target_res)
+
+        elif op_type in ("RECORD_FAILURE", "RESOURCE_CONSTRAINED"):
+            res_id = p.get("resource_id", "gemini-2.5-flash")
+            ftype_str = p.get("failure_type", "RATE_LIMITED")
+            ftype = FailureType.RATE_LIMITED if "RATE" in ftype_str else FailureType.QUOTA_EXHAUSTED
+            self.adapter.force_failure(res_id, ftype)
+            exec_res = self.adapter.execute(p.get("workflow_id", "W1"), res_id, timestamp=self.sim_time_str, current_time_num=self.sim_time_num)
+            self.scheduler.handle_failure(exec_res.failure_event, dimensions={"rpm": 2.0})
+
+        elif op_type in ("ADVANCE_RUNTIME", "SIMULATION_STEP"):
+            self.step_live_simulation()
+
+        elif op_type in ("RECORD_OFFLINE_EVENT", "OFFLINE_EVENT"):
+            raw_msg = p.get("raw") or f"Offline action: {op_type}"
+            res_id = p.get("resource_id", "system")
+            self.log_event(f"[OFFLINE] {raw_msg}", resource_id=res_id)
+
+        return True
+
+    def execute_reserved_resource(
+        self,
+        workflow_id: str,
+        reservation_id: str,
+        input_data: str = "Execute task on LAN Ollama instance."
+    ) -> bool:
+        """Executes a reserved resource (e.g. ollama-local) via ResourceAdapter and handles real logging."""
+        exec_res = self.resource_adapter.execute(
+            workflow_id=workflow_id,
+            resource_id="ollama-local",
+            input_data=input_data,
+            estimated_tokens=500,
+            timestamp=self.sim_time_str,
+            current_time_num=self.sim_time_num,
+            reservation_id=reservation_id,
+            resource_manager=self.rm
+        )
+        if exec_res.success:
+            self.log_event(
+                f"OLLAMA_EXECUTION: Executed LAN inference on model {OLLAMA_MODEL} for {workflow_id} (success=True)",
+                resource_id="ollama-local"
+            )
+            self.log_event(f"WORKFLOW_REROUTED: {workflow_id} -> ollama-local", resource_id="ollama-local")
+            return True
+        else:
+            fail_msg = exec_res.failure_event.message if exec_res.failure_event else "Execution failed"
+            self.log_event(
+                f"OLLAMA_REQUEST_FAILED: {fail_msg}",
+                resource_id="ollama-local"
+            )
+            if exec_res.failure_event:
+                self.scheduler.handle_failure(exec_res.failure_event)
+            return False
 
     def step_live_simulation(self) -> Dict[str, Any]:
         """Advances live simulation scenario deterministically."""
@@ -167,19 +277,45 @@ class RuntimeController:
                 self.scheduler.request_resource(w1, "gemini-2.5-flash", {"rpm": 1.0, "tpm": 50000.0}, allow_fallback=True)
                 step_msg = "W1 requested gemini-2.5-flash reservation."
         elif self.sim_step_count == 3:
-            self.adapter.force_failure("gemini-2.5-flash", FailureType.RATE_LIMITED)
+            self.adapter.force_failure("gemini-2.5-flash", FailureType.SERVICE_UNAVAILABLE)
             exec_res = self.adapter.execute("W1", "gemini-2.5-flash", timestamp=self.sim_time_str, current_time_num=self.sim_time_num)
-            self.scheduler.handle_failure(exec_res.failure_event, dimensions={"rpm": 4.0})
-            step_msg = "High contention detected: Gemini 2.5 Flash RATE_LIMITED! Dynamic fallback to Flash Lite triggered."
+            self.log_event("GEMINI_CONNECTIVITY_FAILURE: gemini-2.5-flash unreachable", resource_id="gemini-2.5-flash")
+            self.log_event("RESOURCE_UNAVAILABLE: gemini-2.5-flash marked CONSTRAINED", resource_id="gemini-2.5-flash")
+            fallback_reservation = self.scheduler.handle_failure(exec_res.failure_event, dimensions={"rpm": 4.0})
+            if fallback_reservation and fallback_reservation.resource_id == "ollama-local":
+                self.log_event("FALLBACK_SELECTED: gemini-2.5-flash -> ollama-local", resource_id="ollama-local")
+                exec_success = self.execute_reserved_resource(
+                    workflow_id="W1",
+                    reservation_id=fallback_reservation.id,
+                    input_data="Execute the next task for workflow W1 after Gemini connectivity failure."
+                )
+                if exec_success:
+                    step_msg = "Gemini 2.5 Flash RATE_LIMITED / CONNECTIVITY LOST! Dynamic LAN fallback to Ollama Local triggered."
+                else:
+                    step_msg = "Gemini 2.5 Flash connectivity lost and Ollama fallback execution failed."
+            else:
+                step_msg = "Gemini 2.5 Flash connectivity lost and no Ollama fallback reservation was made."
         elif self.sim_step_count == 4:
             w2 = self.scheduler.workflows.get("W2")
             if w2:
-                w2.current_task = "gemini-2.5-flash-lite"
-                self.scheduler.request_resource(w2, "gemini-2.5-flash-lite", {"rpm": 1.0}, allow_fallback=True)
-                step_msg = "W2 rerouted successfully to Gemini 2.5 Flash Lite."
+                w2.current_task = "ollama-local"
+                w2_res = self.scheduler.request_resource(w2, "ollama-local", {"rpm": 1.0}, allow_fallback=True)
+                if w2_res and w2_res.resource_id == "ollama-local":
+                    exec_success = self.execute_reserved_resource(
+                        workflow_id="W2",
+                        reservation_id=w2_res.id,
+                        input_data="Execute task for workflow W2 on Ollama Local LAN instance."
+                    )
+                    if exec_success:
+                        step_msg = "W2 rerouted successfully to Ollama Local LAN instance."
+                    else:
+                        step_msg = "W2 rerouted to Ollama Local LAN instance but execution failed."
+                else:
+                    step_msg = "W2 request for ollama-local was queued or denied."
         elif self.sim_step_count == 5:
             self.rm.mark_available("gemini-2.5-flash")
-            step_msg = "Gemini 2.5 Flash recovered from cooldown and restored to AVAILABLE state."
+            self.log_event("RESOURCE_RECOVERED: gemini-2.5-flash connectivity restored to AVAILABLE state.", resource_id="gemini-2.5-flash")
+            step_msg = "Gemini 2.5 Flash recovered from connectivity loss and restored to AVAILABLE state."
         else:
             self.scheduler.advance_time(1.0)
             self.scheduler._process_queue()
@@ -230,10 +366,21 @@ class WorkflowCreateRequest(BaseModel):
     task_sequence: Optional[List[str]] = Field(None, description="Sequential array of resource IDs", example=["search", "gemini-2.5-flash", "postgres-db"])
 
 class ReservationCreateRequest(BaseModel):
-    workflow_id: str = Field(..., description="Workflow ID making the reservation", example="W1")
-    resource_id: str = Field(..., description="Target resource ID to reserve", example="gemini-2.5-flash")
-    dimensions: Dict[str, float] = Field(default_factory=lambda: {"rpm": 1.0}, description="Capacity dimensions requested", example={"rpm": 1.0, "tpm": 50000.0})
-    soft: bool = Field(False, description="If True, create soft reservation based on predictions", example=False)
+    workflow_id: str = Field(..., description="Workflow ID making the reservation", json_schema_extra={"example": "W1"})
+    resource_id: str = Field(..., description="Target resource ID to reserve", json_schema_extra={"example": "gemini-2.5-flash"})
+    dimensions: Dict[str, float] = Field(default_factory=lambda: {"rpm": 1.0}, description="Capacity dimensions requested", json_schema_extra={"example": {"rpm": 1.0, "tpm": 50000.0}})
+    soft: bool = Field(False, description="If True, create soft reservation based on predictions", json_schema_extra={"example": False})
+
+class SyncOperation(BaseModel):
+    operationId: str = Field(..., description="Unique operation ID for idempotency")
+    type: str = Field(..., description="Operation type, e.g. CREATE_WORKFLOW, RESERVE_RESOURCE")
+    timestamp: Optional[str] = None
+    payload: Dict[str, Any] = Field(default_factory=dict)
+
+class SyncRequest(BaseModel):
+    clientId: Optional[str] = Field("browser-client", description="Client identifier")
+    baseVersion: Optional[int] = Field(0, description="Base state version client had before going offline")
+    operations: List[SyncOperation] = Field(default_factory=list, description="Array of offline pending operations")
 
 class SimulationStepRequest(BaseModel):
     action: str = "run_step"  # "run_step", "rate_limit", "quota_exhausted", "live"
@@ -464,6 +611,46 @@ def get_events(limit: int = Query(default=50, ge=1, le=200), type: Optional[str]
     
     events_dtos.reverse()
     return events_dtos
+
+
+@app.post("/api/v1/sync", tags=["Public Integration API"], summary="Synchronize Offline Operations & Reconcile State")
+@app.post("/api/sync")
+def sync_offline_operations(req: SyncRequest):
+    """Synchronize pending offline operations idempotently and return updated authoritative runtime snapshot."""
+    synced_ops = []
+    failed_ops = []
+
+    for op in req.operations:
+        try:
+            success = controller.process_sync_operation(op)
+            if success:
+                synced_ops.append(op.operationId)
+            else:
+                failed_ops.append(op.operationId)
+        except Exception as e:
+            failed_ops.append(op.operationId)
+
+    if synced_ops:
+        controller.log_event(f"Sync complete: {len(synced_ops)} offline operations reconciled successfully.")
+
+    snapshot = {
+        "resources": [map_resource_to_dto(r) for r in controller.rm.resources.values()],
+        "service_graph": map_graph_to_dto(controller.sg, controller.rm),
+        "workflows": get_scheduler_workloads(),
+        "reservations": list_reservations_v1(),
+        "events": get_events(limit=50),
+        "runtimeVersion": controller.sim_step_count,
+        "sim_time": controller.sim_time_str,
+        "synced_at": datetime.now(timezone.utc).isoformat()
+    }
+
+    return {
+        "status": "success",
+        "syncedOperations": synced_ops,
+        "failedOperations": failed_ops,
+        "runtimeVersion": controller.sim_step_count,
+        "snapshot": snapshot
+    }
 
 
 # ==================================================

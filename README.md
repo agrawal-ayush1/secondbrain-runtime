@@ -325,9 +325,59 @@ pytest backend/
 
 - `test_api_v1.py` (9 tests): Public `/api/v1/*` REST endpoint validation.
 - `test_gemini_adapter.py` (13 tests): Quota tracker and Gemini adapter simulation tests.
+- `test_ollama_adapter.py` (5 tests): Ollama LAN adapter health, inference, and fallback tests.
 - `test_prediction_engine.py` (8 tests): Dependency prediction engine scoring tests.
 - `test_scheduler.py` (13 tests): Priority aging, queueing, and fallback rerouting tests.
 - `test_server.py` (12 tests): Controller state reset and simulation step endpoint tests.
+- `test_sync.py` (2 tests): Offline batch synchronization and idempotency tests.
+
+---
+
+## 13. Intermittent Connectivity & Ollama LAN Resilience Architecture
+
+SecondBrain Runtime includes a dynamic network resilience mechanism that guarantees AI workflow continuation during internet outages for at least 1 minute by failing over from cloud LLM endpoints (Gemini) to a local/LAN reachable Ollama model instance.
+
+### Network Topology
+
+```
+                  INTERNET
+                     |
+                     X (Internet loss)
+                     |
+               Gemini Cloud
+                     |
+                     X (Unreachable)
+                     |
+             Main Runtime PC (SecondBrain Runtime)
+                     |
+                    LAN (Local Network)
+                     |
+                     v
+             Ollama Device (LAN IP: e.g. http://192.168.1.50:11434)
+                     |
+                     v
+             Local LLM Model (e.g. llama3.2)
+```
+
+### Configuration
+
+Add the following environment variables to `.env` or system environment to configure your LAN Ollama device:
+
+```env
+OLLAMA_BASE_URL="http://192.168.1.50:11434" # LAN device IP and port
+OLLAMA_MODEL="llama3.2"                     # Installed Ollama model name
+OLLAMA_CONCURRENCY=1                       # Local concurrency limit
+```
+
+### Failover & Recovery Sequence
+
+1. **Normal Execution**: Workflows run against primary cloud LLM (`gemini-2.5-flash`).
+2. **Connectivity Loss**: Gemini execution fails or becomes unreachable.
+3. **Failure Detection & Circuit Breaker**: Runtime intercepts failure and marks Gemini `CONSTRAINED`/`UNAVAILABLE`.
+4. **Service Graph Fallback**: `ServiceGraph` identifies fallback edge: `gemini-2.5-flash` $\rightarrow$ `ollama-local`.
+5. **LAN Health & Reservation**: Runtime verifies `ollama-local` health over LAN and reserves local capacity.
+6. **Local LAN Inference**: `OllamaAdapter` executes HTTP inference request against the Ollama device over LAN.
+7. **Internet Recovery**: Gemini health checks pass and Gemini returns to `AVAILABLE` state for future workloads.
 
 ---
 
