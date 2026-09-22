@@ -18,14 +18,16 @@ function notify() {
 export const graphService = {
   subscribe(callback: () => void) {
     listeners.push(callback);
+    const unsubGlobal = apiClient.subscribeRefresh(callback);
     return () => {
       const idx = listeners.indexOf(callback);
       if (idx !== -1) listeners.splice(idx, 1);
+      unsubGlobal();
     };
   },
 
   async getGraph(): Promise<ServiceGraph> {
-    const res = await apiClient.request<ServiceGraph>('/graph', () => {
+    const res = await apiClient.request<ServiceGraph>('/api/graph', () => {
       const activeNodes = nodesStore.filter((n) => !n.isStandby);
       const standbyNodes = nodesStore.filter((n) => n.isStandby);
       const healthy = nodesStore.filter((n) => n.status === 'healthy').length;
@@ -62,7 +64,6 @@ export const graphService = {
   },
 
   async toggleStandbyNodeVisibility(showStandby: boolean) {
-    // Keep nodes, but caller can filter or highlight
     notify();
   },
 };

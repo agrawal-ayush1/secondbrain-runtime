@@ -44,6 +44,12 @@ export interface Resource {
     qps?: string;
   };
   crashDetails?: string;
+  capacity?: {
+    reserved?: number;
+    available?: number;
+    total?: number;
+    unit?: string;
+  };
 }
 
 export type AlternativeStatus = 'active_fallback' | 'available' | 'standby' | 'disabled';
@@ -53,6 +59,7 @@ export interface Alternative {
   id: string;
   name: string;
   primaryResourceId: string;
+  primary_resource_id?: string;
   primaryResourceName: string;
   primaryEndpoint: string;
   fallbackEndpoint: string;
@@ -100,6 +107,7 @@ export interface GraphNode {
     weight?: string;
   };
   isStandby?: boolean;
+  isConstrained?: boolean;
 }
 
 export interface GraphEdge {
@@ -150,6 +158,8 @@ export interface Workload {
     message: string;
     type?: 'info' | 'success' | 'warn';
   }[];
+  current_task?: string;
+  task_sequence?: string[];
 }
 
 export type EventSeverity = 'info' | 'success' | 'warning' | 'error';

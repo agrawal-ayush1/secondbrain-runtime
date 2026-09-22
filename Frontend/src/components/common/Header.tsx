@@ -139,7 +139,7 @@ export const Header: React.FC = () => {
         {/* Region & Environment Chip */}
         <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 bg-surface-container border border-outline-variant/30 rounded-md text-label-caps font-mono text-outline">
           <Globe className="h-3 w-3 text-secondary" />
-          <span>us-east-1a / Multi-AZ</span>
+          <span>us-central1 / SIMULATED</span>
         </div>
 
         {/* Notification indicator to Events */}

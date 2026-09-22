@@ -202,15 +202,15 @@ export const ResourcesPage: React.FC = () => {
                 <div className="grid grid-cols-3 gap-2 pt-1 border-t border-outline-variant/20 text-center">
                   <div>
                     <span className="text-label-caps text-outline block">P99</span>
-                    <span className="text-on-surface font-semibold">{res.metrics.p99Latency || '12ms'}</span>
+                    <span className="text-on-surface font-semibold">{res.metrics?.p99Latency || '12ms'}</span>
                   </div>
                   <div>
                     <span className="text-label-caps text-outline block">CPU</span>
-                    <span className="text-on-surface font-semibold">{res.metrics.cpu || 32}%</span>
+                    <span className="text-on-surface font-semibold">{res.metrics?.cpu || 32}%</span>
                   </div>
                   <div>
                     <span className="text-label-caps text-outline block">REPLICAS</span>
-                    <span className="text-on-surface font-semibold">{res.metrics.replicas || '1 / 1'}</span>
+                    <span className="text-on-surface font-semibold">{res.metrics?.replicas || '1 / 1'}</span>
                   </div>
                 </div>
               </div>

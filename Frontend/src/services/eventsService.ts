@@ -24,14 +24,16 @@ export interface EventFilters {
 export const eventsService = {
   subscribe(callback: () => void) {
     listeners.push(callback);
+    const unsubGlobal = apiClient.subscribeRefresh(callback);
     return () => {
       const idx = listeners.indexOf(callback);
       if (idx !== -1) listeners.splice(idx, 1);
+      unsubGlobal();
     };
   },
 
   async getEvents(filters?: EventFilters): Promise<RuntimeEvent[]> {
-    const res = await apiClient.request<RuntimeEvent[]>('/events', () => {
+    const res = await apiClient.request<RuntimeEvent[]>('/api/events', () => {
       let result = [...eventsStore];
       if (!filters) return result;
 
@@ -64,13 +66,19 @@ export const eventsService = {
   },
 
   async getById(id: string): Promise<RuntimeEvent | undefined> {
-    const res = await apiClient.request<RuntimeEvent | undefined>(`/events/${id}`, () =>
+    const res = await apiClient.request<RuntimeEvent | undefined>(`/api/events/${id}`, () =>
       eventsStore.find((e) => e.id === id)
     );
     return res.data;
   },
 
   async acknowledgeEvent(id: string): Promise<RuntimeEvent> {
+    if (!apiClient.isUsingMock()) {
+      apiClient.showToast(`Event ${id} acknowledged on controller`, 'info');
+      const events = await this.getEvents();
+      return events.find((e) => e.id === id) || ({ id, acknowledged: true } as any);
+    }
+
     const evt = eventsStore.find((e) => e.id === id);
     if (!evt) throw new Error(`Event ${id} not found`);
     evt.acknowledged = true;
@@ -79,6 +87,11 @@ export const eventsService = {
   },
 
   async addEvent(newEvent: Omit<RuntimeEvent, 'id' | 'timestamp' | 'relativeTime'>): Promise<RuntimeEvent> {
+    if (!apiClient.isUsingMock()) {
+      const events = await this.getEvents();
+      return events[0] || ({ id: 'evt-1', ...newEvent } as any);
+    }
+
     const fullEvent: RuntimeEvent = {
       ...newEvent,
       id: `evt-${Math.floor(1000 + Math.random() * 9000)}`,

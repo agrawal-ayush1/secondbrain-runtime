@@ -7,6 +7,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Sidebar } from './components/common/Sidebar';
 import { Header } from './components/common/Header';
+import { ToastContainer } from './components/common/ToastContainer';
 import { OverviewPage } from './pages/OverviewPage';
 import { ServiceGraphPage } from './pages/ServiceGraphPage';
 import { ResourcesPage } from './pages/ResourcesPage';
@@ -14,6 +15,7 @@ import { AlternativesPage } from './pages/AlternativesPage';
 import { SchedulerPage } from './pages/SchedulerPage';
 import { EventsPage } from './pages/EventsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { DeveloperPage } from './pages/DeveloperPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 export default function App() {
@@ -37,11 +39,15 @@ export default function App() {
               <Route path="/alternatives" element={<AlternativesPage />} />
               <Route path="/scheduler" element={<SchedulerPage />} />
               <Route path="/events" element={<EventsPage />} />
+              <Route path="/developer" element={<DeveloperPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </main>
         </div>
+
+        {/* Global Toast Container */}
+        <ToastContainer />
       </div>
     </BrowserRouter>
   );

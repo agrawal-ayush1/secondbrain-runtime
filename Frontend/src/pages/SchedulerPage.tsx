@@ -20,25 +20,30 @@ import {
 import { schedulerService } from '../services/schedulerService';
 import { Workload, SchedulerDecision } from '../types';
 import { StatusBadge } from '../components/common/StatusBadge';
+import { SimulationControlBar } from '../components/common/SimulationControlBar';
 
 export const SchedulerPage: React.FC = () => {
   const navigate = useNavigate();
   const [workloads, setWorkloads] = useState<Workload[]>([]);
   const [decisions, setDecisions] = useState<SchedulerDecision[]>([]);
-  const [selectedWorkloadId, setSelectedWorkloadId] = useState<string>('wl-auth-902');
+  const [selectedWorkloadId, setSelectedWorkloadId] = useState<string>('W1');
   const [isRescheduling, setIsRescheduling] = useState(false);
 
-  useEffect(() => {
-    async function loadData() {
+  async function loadData() {
+    try {
       const [wl, decs] = await Promise.all([
         schedulerService.getWorkloads(),
         schedulerService.getDecisions(),
       ]);
       setWorkloads(wl);
       setDecisions(decs);
+    } catch (err) {
+      console.error('Error loading scheduler data:', err);
     }
-    loadData();
+  }
 
+  useEffect(() => {
+    loadData();
     const unsub = schedulerService.subscribe(loadData);
     return () => unsub();
   }, []);
@@ -48,7 +53,8 @@ export const SchedulerPage: React.FC = () => {
   const handleReschedule = async (workloadId: string) => {
     setIsRescheduling(true);
     await schedulerService.triggerReschedule(workloadId);
-    setTimeout(() => setIsRescheduling(false), 800);
+    await loadData();
+    setTimeout(() => setIsRescheduling(false), 500);
   };
 
   return (
@@ -57,7 +63,7 @@ export const SchedulerPage: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-outline-variant/30">
         <div>
           <span className="text-label-caps text-outline font-mono uppercase tracking-widest">
-            Task Orchestration & Affinity Engine
+            ServiceGraph Workload Orchestrator
           </span>
           <h1 className="text-xl font-bold font-mono text-on-surface tracking-tight flex items-center gap-2">
             Workload Scheduler
@@ -70,10 +76,13 @@ export const SchedulerPage: React.FC = () => {
         <div className="flex items-center gap-3 font-mono text-xs">
           <div className="bg-surface-container-low border border-outline-variant/30 px-3 py-1.5 rounded-lg flex items-center gap-2 text-outline">
             <Zap className="h-3.5 w-3.5 text-secondary" />
-            <span>Policy: Adaptive Affinity + Quorum Fallback</span>
+            <span>Policy: Dynamic ServiceGraph Fallback + Quorum Reservation</span>
           </div>
         </div>
       </div>
+
+      {/* Global Simulator Control Bar */}
+      <SimulationControlBar onWorkflowCreated={loadData} />
 
       {/* Main Two-Column View */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 font-mono text-xs">
@@ -82,7 +91,7 @@ export const SchedulerPage: React.FC = () => {
           {/* Workload Cards List */}
           <div className="space-y-3">
             <span className="text-label-caps text-outline uppercase tracking-wider block">
-              Active Managed Workloads ({workloads.length})
+              Active Managed Controller Workloads ({workloads.length})
             </span>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -109,8 +118,8 @@ export const SchedulerPage: React.FC = () => {
 
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-label-caps text-outline">
-                        <span>Target: {wl.targetResourceName}</span>
-                        <span>{wl.duration}</span>
+                        <span>Target: {wl.targetResourceName || wl.current_task || 'search'}</span>
+                        <span>{wl.duration || '1m 30s'}</span>
                       </div>
                       {wl.progress !== undefined && (
                         <div className="w-full bg-surface-container-highest h-1.5 rounded-full overflow-hidden">
@@ -139,7 +148,7 @@ export const SchedulerPage: React.FC = () => {
                   <h2 className="text-base font-bold text-on-surface">
                     {selectedWorkload.name} ({selectedWorkload.id})
                   </h2>
-                  <p className="text-secondary text-xs">{selectedWorkload.targetEndpoint}</p>
+                  <p className="text-secondary text-xs">{selectedWorkload.targetEndpoint || `Task Sequence: ${(selectedWorkload.task_sequence || []).join(' → ')}`}</p>
                 </div>
 
                 <button
@@ -148,62 +157,66 @@ export const SchedulerPage: React.FC = () => {
                   className="px-3 py-1.5 bg-primary/20 hover:bg-primary/30 text-primary border border-primary/40 rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50 font-semibold"
                 >
                   <RotateCcw className={`h-3 w-3 ${isRescheduling ? 'animate-spin' : ''}`} />
-                  <span>Re-evaluate Affinity</span>
+                  <span>Step Scheduler Pass</span>
                 </button>
               </div>
 
               {/* Active Placement Decision */}
               <div className="bg-surface-container-low border border-outline-variant/30 rounded-lg p-3 space-y-1">
                 <span className="text-label-caps text-outline uppercase block">Active Placement Rationale</span>
-                <p className="text-on-surface text-xs font-semibold">{selectedWorkload.schedulerDecision}</p>
+                <p className="text-on-surface text-xs font-semibold">{selectedWorkload.schedulerDecision || `Scheduled task: ${selectedWorkload.current_task || selectedWorkload.targetResourceId}`}</p>
                 <div className="text-secondary text-label-caps pt-0.5">
-                  Selected Candidate: {selectedWorkload.selectedResource}
+                  Selected Candidate: {selectedWorkload.selectedResource || selectedWorkload.targetResourceId}
                 </div>
               </div>
 
               {/* Evaluated Candidates Breakdown */}
-              <div className="space-y-2">
-                <span className="text-label-caps text-outline uppercase tracking-wider block">
-                  Target Candidate Scoring Matrix
-                </span>
+              {selectedWorkload.alternativesEvaluated && selectedWorkload.alternativesEvaluated.length > 0 && (
                 <div className="space-y-2">
-                  {selectedWorkload.alternativesEvaluated.map((alt, idx) => (
-                    <div
-                      key={idx}
-                      className="p-2.5 rounded-lg bg-surface-container-low border border-outline-variant/20 flex items-center justify-between gap-3"
-                    >
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-on-surface">{alt.name}</span>
-                          {alt.score && (
-                            <span className="text-label-caps px-1.5 py-0.2 rounded bg-tertiary/20 text-tertiary">
-                              Score: {alt.score}/100
-                            </span>
-                          )}
+                  <span className="text-label-caps text-outline uppercase tracking-wider block">
+                    Target Candidate Scoring Matrix
+                  </span>
+                  <div className="space-y-2">
+                    {selectedWorkload.alternativesEvaluated.map((alt, idx) => (
+                      <div
+                        key={idx}
+                        className="p-2.5 rounded-lg bg-surface-container-low border border-outline-variant/20 flex items-center justify-between gap-3"
+                      >
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-on-surface">{alt.name}</span>
+                            {alt.score && (
+                              <span className="text-label-caps px-1.5 py-0.2 rounded bg-tertiary/20 text-tertiary">
+                                Score: {alt.score}/100
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-label-caps text-outline">{alt.note}</div>
                         </div>
-                        <div className="text-label-caps text-outline">{alt.note}</div>
-                      </div>
 
-                      <StatusBadge status={alt.status} size="sm" showDot={false} />
-                    </div>
-                  ))}
+                        <StatusBadge status={alt.status} size="sm" showDot={false} />
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Execution Event Trace */}
-              <div className="space-y-2">
-                <span className="text-label-caps text-outline uppercase tracking-wider block">
-                  Scheduler Event Trace
-                </span>
-                <div className="bg-surface-container-low border border-outline-variant/30 rounded-lg p-3 space-y-2">
-                  {selectedWorkload.eventTrace.map((tr, idx) => (
-                    <div key={idx} className="flex items-start gap-3 text-xs">
-                      <span className="text-label-caps text-outline shrink-0">{tr.time}</span>
-                      <span className="text-on-surface-variant">{tr.message}</span>
-                    </div>
-                  ))}
+              {selectedWorkload.eventTrace && selectedWorkload.eventTrace.length > 0 && (
+                <div className="space-y-2">
+                  <span className="text-label-caps text-outline uppercase tracking-wider block">
+                    Scheduler Event Trace
+                  </span>
+                  <div className="bg-surface-container-low border border-outline-variant/30 rounded-lg p-3 space-y-2">
+                    {selectedWorkload.eventTrace.map((tr, idx) => (
+                      <div key={idx} className="flex items-start gap-3 text-xs">
+                        <span className="text-label-caps text-outline shrink-0">{tr.time}</span>
+                        <span className="text-on-surface-variant">{tr.message}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>

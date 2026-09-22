@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -13,13 +13,16 @@ import {
   CalendarClock,
   ScrollText,
   Settings,
-  Activity,
   Layers,
   ChevronRight,
   ShieldCheck,
+  Code,
   Zap,
 } from 'lucide-react';
 import { apiClient } from '../../services/apiClient';
+import { resourcesService } from '../../services/resourcesService';
+import { alternativesService } from '../../services/alternativesService';
+import { settingsService } from '../../services/settingsService';
 
 interface NavItem {
   name: string;
@@ -28,19 +31,48 @@ interface NavItem {
   badge?: string;
 }
 
-const NAV_ITEMS: NavItem[] = [
-  { name: 'Overview', path: '/', icon: LayoutDashboard },
-  { name: 'Service Graph', path: '/service-graph', icon: Network },
-  { name: 'Resources', path: '/resources', icon: Server, badge: '7' },
-  { name: 'Alternatives', path: '/alternatives', icon: GitFork, badge: '4' },
-  { name: 'Scheduler', path: '/scheduler', icon: CalendarClock },
-  { name: 'Events & Logs', path: '/events', icon: ScrollText, badge: 'Live' },
-  { name: 'Settings', path: '/settings', icon: Settings },
-];
-
 export const Sidebar: React.FC = () => {
   const location = useLocation();
   const isMock = apiClient.isUsingMock();
+  const [nodeCount, setNodeCount] = useState<number>(6);
+  const [altCount, setAltCount] = useState<number>(1);
+  const [clusterId, setClusterId] = useState<string>('sb-cluster-prod-01');
+
+  useEffect(() => {
+    async function loadStats() {
+      try {
+        const [res, alts, setts] = await Promise.all([
+          resourcesService.getAll(),
+          alternativesService.getAll(),
+          settingsService.getSettings(),
+        ]);
+        setNodeCount(res.length);
+        setAltCount(alts.length);
+        setClusterId(setts.general?.clusterId || 'sb-cluster-prod-01');
+      } catch (err) {
+        // Fallback
+      }
+    }
+    loadStats();
+
+    const unsubR = resourcesService.subscribe(loadStats);
+    const unsubA = alternativesService.subscribe(loadStats);
+    return () => {
+      unsubR();
+      unsubA();
+    };
+  }, []);
+
+  const NAV_ITEMS: NavItem[] = [
+    { name: 'Overview', path: '/', icon: LayoutDashboard },
+    { name: 'Service Graph', path: '/service-graph', icon: Network },
+    { name: 'Resources', path: '/resources', icon: Server, badge: `${nodeCount}` },
+    { name: 'Alternatives', path: '/alternatives', icon: GitFork, badge: `${altCount}` },
+    { name: 'Scheduler', path: '/scheduler', icon: CalendarClock },
+    { name: 'Events & Logs', path: '/events', icon: ScrollText, badge: 'Live' },
+    { name: 'Developer API', path: '/developer', icon: Code, badge: 'v1' },
+    { name: 'Settings', path: '/settings', icon: Settings },
+  ];
 
   return (
     <aside
@@ -54,11 +86,11 @@ export const Sidebar: React.FC = () => {
         </div>
         <div className="flex flex-col">
           <span className="font-mono text-sm font-semibold tracking-wider text-on-surface uppercase flex items-center gap-1.5">
-            Runtime Graph
+            SecondBrain
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-tertiary shadow-[0_0_6px_rgba(78,222,163,0.8)]" />
           </span>
           <span className="text-label-caps text-outline uppercase tracking-widest">
-            System Orchestration
+            Agentic Runtime
           </span>
         </div>
       </div>
@@ -126,17 +158,17 @@ export const Sidebar: React.FC = () => {
               <span className="text-outline text-xs flex items-center gap-1.5">
                 <Layers className="h-3 w-3 text-secondary" /> Mesh Nodes
               </span>
-              <span className="font-mono text-xs text-on-surface font-semibold">8 Active</span>
+              <span className="font-mono text-xs text-on-surface font-semibold">{nodeCount} Active</span>
             </div>
             <div className="flex items-center justify-between text-body-sm">
               <span className="text-outline text-xs flex items-center gap-1.5">
                 <GitFork className="h-3 w-3 text-primary" /> Failovers
               </span>
-              <span className="font-mono text-xs text-on-surface font-semibold">4 Armed</span>
+              <span className="font-mono text-xs text-on-surface font-semibold">{altCount} Configured</span>
             </div>
             <div className="flex items-center justify-between text-body-sm">
               <span className="text-outline text-xs flex items-center gap-1.5">
-                <ShieldCheck className="h-3 w-3 text-tertiary" /> Circuit Breaker
+                <ShieldCheck className="h-3 w-3 text-tertiary" /> Quota Manager
               </span>
               <span className="font-mono text-xs text-tertiary font-semibold">Enabled</span>
             </div>
@@ -149,7 +181,7 @@ export const Sidebar: React.FC = () => {
         <div className="bg-surface-container-low border border-outline-variant/30 rounded-lg p-2.5 space-y-1.5 text-xs font-mono">
           <div className="flex items-center justify-between">
             <span className="text-outline text-label-caps uppercase">Cluster</span>
-            <span className="text-on-surface text-label-caps font-semibold">us-east-prod-01</span>
+            <span className="text-on-surface text-label-caps font-semibold truncate max-w-[110px]">{clusterId}</span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-outline text-label-caps uppercase">Runtime</span>
@@ -162,7 +194,7 @@ export const Sidebar: React.FC = () => {
             <span className="text-outline text-label-caps uppercase">Backend</span>
             <span className="text-secondary text-label-caps font-semibold flex items-center gap-1">
               <Zap className="h-2.5 w-2.5" />
-              {isMock ? 'Mock Engine' : 'Live Gateway'}
+              {isMock ? 'Mock Engine' : 'FastAPI Controller'}
             </span>
           </div>
         </div>

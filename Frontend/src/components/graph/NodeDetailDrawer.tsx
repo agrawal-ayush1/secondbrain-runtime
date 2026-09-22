@@ -85,19 +85,19 @@ export const NodeDetailDrawer: React.FC<NodeDetailDrawerProps> = ({
             <div>
               <span className="text-outline text-label-caps block">P99 LATENCY</span>
               <span className="text-on-surface font-semibold">
-                {node.metrics.p99 || resource?.metrics.p99Latency || '12.4ms'}
+                {node.metrics?.p99 || resource?.metrics?.p99Latency || '12.4ms'}
               </span>
             </div>
             <div>
               <span className="text-outline text-label-caps block">CPU UTIL</span>
               <span className="text-on-surface font-semibold">
-                {node.metrics.cpu || `${resource?.metrics.cpu || 32}%`}
+                {node.metrics?.cpu || `${resource?.metrics?.cpu || 32}%`}
               </span>
             </div>
             <div>
               <span className="text-outline text-label-caps block">REPLICAS</span>
               <span className="text-on-surface font-semibold">
-                {node.metrics.replicas || resource?.metrics.replicas || '1 / 1'}
+                {node.metrics?.replicas || resource?.metrics?.replicas || '1 / 1'}
               </span>
             </div>
             <div>
