@@ -26,9 +26,8 @@ export const ServiceGraphPage: React.FC = () => {
   const [graph, setGraph] = useState<ServiceGraph | null>(null);
   const [resources, setResources] = useState<Resource[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
-    searchParams.get('select') || 'gw-ingress'
+    searchParams.get('select') || null
   );
-  const [filterQuery, setFilterQuery] = useState('');
   const [isTestingFailover, setIsTestingFailover] = useState(false);
 
   useEffect(() => {
@@ -52,7 +51,11 @@ export const ServiceGraphPage: React.FC = () => {
 
   const handleSelectNode = (nodeId: string) => {
     setSelectedNodeId(nodeId);
-    setSearchParams({ select: nodeId });
+    if (nodeId) {
+      setSearchParams({ select: nodeId });
+    } else {
+      setSearchParams({});
+    }
   };
 
   const handleCloseDrawer = () => {
@@ -73,32 +76,49 @@ export const ServiceGraphPage: React.FC = () => {
     (r) => r.id === selectedNode?.resourceId || r.id === selectedNode?.id
   );
 
+  // Dynamic Topology Metrics derived from actual graph data
+  const totalNodes = graph?.nodes.length || 0;
+  const activeNodesCount = graph?.nodes.filter((n) => !n.isStandby).length || graph?.totalActive || 0;
+  const constrainedCount = graph?.nodes.filter((n) => n.isConstrained || n.status === 'degraded' || n.status === 'offline').length || 0;
+  const fallbackRoutesCount = graph?.edges.filter((e) => e.type === 'fallback').length || 0;
+  const wireFlowsCount = graph?.edges.filter((e) => e.type === 'in_band').length || 0;
+
   return (
     <div id="service-graph-page" className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden">
       {/* Topology Meta Toolbar */}
       <div className="h-12 px-6 bg-surface-container-low border-b border-outline-variant/30 flex items-center justify-between shrink-0 font-mono text-xs z-10">
         <div className="flex items-center gap-6 overflow-x-auto py-1">
           <div className="flex items-center gap-2 text-on-surface">
-            <span className="text-outline text-label-caps">TOPOLOGY:</span>
-            <span className="font-semibold text-xs">Production Mesh v2.8</span>
+            <Network className="h-4 w-4 text-primary" />
+            <span className="text-outline text-label-caps">SERVICE GRAPH:</span>
+            <span className="font-semibold text-xs text-on-surface">Runtime Dependency Topology</span>
           </div>
 
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-tertiary shadow-[0_0_6px_rgba(78,222,163,0.8)]" />
-            <span className="text-on-surface font-semibold">{graph?.totalActive || 7} Active Nodes</span>
+            <span className="text-on-surface font-semibold">{activeNodesCount} Active Nodes</span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-primary" />
-            <span className="text-on-surface-variant">{graph?.totalStandby || 1} Hot Standby</span>
+          {constrainedCount > 0 ? (
+            <div className="flex items-center gap-2 px-2 py-0.5 rounded bg-error/15 border border-error/40 text-error">
+              <span className="h-2 w-2 rounded-full bg-error animate-ping" />
+              <span className="font-bold">{constrainedCount} Constrained</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-outline">
+              <span className="h-2 w-2 rounded-full bg-tertiary/60" />
+              <span>0 Constrained</span>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 text-outline">
+            <GitFork className="h-3.5 w-3.5 text-primary" />
+            <span className="text-primary font-semibold">{fallbackRoutesCount} Alternative Routes</span>
           </div>
 
           <div className="flex items-center gap-2 text-outline">
-            <span className="text-secondary font-semibold">11 Active Wire Flows</span>
-          </div>
-
-          <div className="flex items-center gap-2 text-outline">
-            <span className="text-primary font-semibold">4 Alternative Routes</span>
+            <Activity className="h-3.5 w-3.5 text-secondary" />
+            <span className="text-secondary font-semibold">{wireFlowsCount} Dependency Wire Flows</span>
           </div>
         </div>
 
@@ -107,9 +127,9 @@ export const ServiceGraphPage: React.FC = () => {
           <select
             value={selectedNodeId || ''}
             onChange={(e) => handleSelectNode(e.target.value)}
-            className="bg-surface-container border border-outline-variant/40 rounded px-2.5 py-1 text-xs font-mono text-on-surface focus:outline-none focus:border-primary"
+            className="bg-surface-container border border-outline-variant/40 rounded px-2.5 py-1 text-xs font-mono text-on-surface focus:outline-none focus:border-primary cursor-pointer"
           >
-            <option value="" disabled>Jump to Node...</option>
+            <option value="">Select / Focus Node...</option>
             {graph?.nodes.map((n) => (
               <option key={n.id} value={n.id}>
                 {n.label} ({n.type})
